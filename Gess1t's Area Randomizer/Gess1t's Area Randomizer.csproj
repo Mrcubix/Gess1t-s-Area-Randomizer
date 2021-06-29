@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net5.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\.modules\OpenTabletDriver-9b36df6aa9646e9a45db56948cb9783bd969102a\OpenTabletDriver.Plugin\OpenTabletDriver.Plugin.csproj"/>
+  </ItemGroup>
+</Project>
