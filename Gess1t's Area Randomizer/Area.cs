@@ -25,12 +25,12 @@ namespace Area_Randomizer
         }
         public Vector2 toTopLeft() 
         {
-            return new Vector2(position.X - (0.5f * size.X), position.Y - (0.5f * size.Y));
+            return position - (0.5f * size);
         }
         public void Update(Vector2 sizeUpdate, Vector2 positionUpdate)
         {
-            size = Vector2.Add(size, sizeUpdate);
-            position = Vector2.Add(position, positionUpdate);
+            size = size + sizeUpdate;
+            position = position + positionUpdate;
         }
         public void generateArea(bool enableAspectRatio, bool enableIndependantRandomization, int area_MinX, int area_MaxX, int area_MinY, int area_MaxY, float? aspectRatio)
         {
@@ -38,7 +38,7 @@ namespace Area_Randomizer
             if (enableIndependantRandomization) 
             {
                 float sizeMultiplierY = (float)rdm.Next(area_MinY, area_MaxY) / 100;
-                size = new Vector2(sizeMultiplier * fullArea.X, sizeMultiplierY * fullArea.X);
+                size = fullArea * new Vector2(sizeMultiplier, sizeMultiplierY);
             }
             else
             {
@@ -48,16 +48,12 @@ namespace Area_Randomizer
                 }
                 else
                 {
-                    size = new Vector2(sizeMultiplier * fullArea.X, sizeMultiplier * fullArea.Y);
+                    size = fullArea * sizeMultiplier;
                 }
             }
-            float minXPos = (size.X / 2) / fullArea.X;
-            float maxXPos = 1 - minXPos;
-            float minYPos = (size.Y / 2) / fullArea.Y;
-            float maxYPos = 1 - minYPos;
-            float xPos = ((float)rdm.Next((int)(minXPos * 10000), (int)(maxXPos * 10000)) / 10000) * fullArea.X;
-            float yPos = ((float)rdm.Next((int)(minYPos * 10000), (int)(maxYPos * 10000)) / 10000) * fullArea.Y;
-            position = new Vector2(xPos, yPos);
+            Vector2 minPos = (size / 2) / fullArea;
+            Vector2 maxPos = Vector2.One - minPos;
+            position = (minPos + ((maxPos - minPos) * new Vector2((float)rdm.NextDouble(), (float)rdm.NextDouble()))) * fullArea;
         }
     }
 }

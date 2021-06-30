@@ -45,8 +45,8 @@ namespace Area_Randomizer
                 {
                     timer.Reset();
                     targetArea = new Area(fullArea, EnableAspectRatio, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
-                    sizeUpdateVector = Vector2.Divide(Vector2.Subtract(targetArea.size, area.size), (float)(transitionDuration / areaTransitionUpdateInterval));
-                    positionUpdateVector = Vector2.Divide(Vector2.Subtract(targetArea.position, area.position), (float)(transitionDuration / areaTransitionUpdateInterval));
+                    sizeUpdateVector = (targetArea.size - area.size) / (float)(transitionDuration / areaTransitionUpdateInterval);
+                    positionUpdateVector = (targetArea.position - area.position) / (float)(transitionDuration / areaTransitionUpdateInterval);
                     //Log.Debug("Area Randomizer", $"New area: {targetArea.toString()}");
                     updateIntervalTimer.Start();
                     transitionTimer.Start();
@@ -68,9 +68,8 @@ namespace Area_Randomizer
             {
                 return new Vector2(point.X,point.Y);
             }
-            float generatedAreaPosX = (((point.X / lpmm) - area.toTopLeft().X) / area.size.X);
-            float generatedAreaPosY = (((point.Y / lpmm) - area.toTopLeft().Y) / area.size.Y);
-            return new Vector2((userDefinedArea.toTopLeft().X + (generatedAreaPosX * userDefinedArea.size.X)) * lpmm, (userDefinedArea.toTopLeft().Y + (generatedAreaPosY * userDefinedArea.size.Y)) * lpmm);
+            Vector2 generatedareaPos = (((point / lpmm) - area.toTopLeft()) / area.size);
+            return (userDefinedArea.toTopLeft() + (generatedareaPos * userDefinedArea.size)) * lpmm;
         }
         // Get Pen pos
         public FilterStage FilterStage => FilterStage.PreTranspose;
