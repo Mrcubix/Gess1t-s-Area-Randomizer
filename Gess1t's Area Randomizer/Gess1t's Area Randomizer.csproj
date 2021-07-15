@@ -5,6 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\.modules\OpenTabletDriver-9b36df6aa9646e9a45db56948cb9783bd969102a\OpenTabletDriver.Plugin\OpenTabletDriver.Plugin.csproj"/>
+    <PackageReference Include="OpenTabletDriver.Plugin" Version="0.5.1" />
+    <PackageReference Include="StreamJsonRpc" Version="2.8.21" />
   </ItemGroup>
 </Project>

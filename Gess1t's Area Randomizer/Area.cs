@@ -3,7 +3,7 @@ using System.Numerics;
 
 namespace Area_Randomizer
 {
-    class Area
+    public class Area
     {
         Vector2 fullArea;
         public Vector2 size;
@@ -32,6 +32,11 @@ namespace Area_Randomizer
             size = size + sizeUpdate;
             position = position + positionUpdate;
         }
+        /*
+            TODO
+                - Rework this part to generate size depending on position instead?
+                - Would allow for static position
+        */
         public void generateArea(bool enableAspectRatio, bool enableIndependantRandomization, int area_MinX, int area_MaxX, int area_MinY, int area_MaxY, float? aspectRatio)
         {
             float sizeMultiplier = (float)rdm.Next(area_MinX, area_MaxX) / 100;

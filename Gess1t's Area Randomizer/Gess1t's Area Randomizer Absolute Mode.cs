@@ -5,6 +5,8 @@ using OpenTabletDriver.Plugin;
 using System;
 using System.Numerics;
 using System.Diagnostics;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Area_Randomizer
 {
@@ -14,6 +16,7 @@ namespace Area_Randomizer
     [PluginName("Gess1t's Area Randomizer (Absolute Mode Edition)")]
     public class Gess1ts_Area_Randomizer_Absolute_Mode : IFilter
     {
+        private readonly ManualResetEvent resetEvent = new ManualResetEvent(false);
         Stopwatch timer = new Stopwatch();
         Stopwatch transitionTimer = new Stopwatch();
         Stopwatch updateIntervalTimer = new Stopwatch();
@@ -24,52 +27,70 @@ namespace Area_Randomizer
         Area area;
         Vector2 positionUpdateVector;
         Vector2 sizeUpdateVector;
+        Server server;
+        bool isRunningAfterSave = true;
         public Vector2 Filter(Vector2 point) 
         {
             if (Info.Driver.OutputMode is AbsoluteOutputMode absoluteOutputMode)
             {
-                float aspectRatio = (float)Math.Round((absoluteOutputMode.Output.Width / absoluteOutputMode.Output.Height), 4);
-                userDefinedArea = new Area(new Vector2(absoluteOutputMode.Input.Width, absoluteOutputMode.Input.Height), absoluteOutputMode.Input.Position);
-                /*
-                    NOTE: 
-                        - Generate a new area when user enable the plugin
-                        - Generate a new area when timer >= generationInterval, also stop the timer & start the transition timer
-                */
-                if (!timer.IsRunning & !updateIntervalTimer.IsRunning)
+                if (isRunningAfterSave)
                 {
-                    timer.Start();
-                    area = new Area(fullArea, EnableAspectRatio, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
-                    //Log.Debug("Area Randomizer", $"New area: {area.toString()}");
+                    isRunningAfterSave = false;
+                    userDefinedArea = new Area(new Vector2(absoluteOutputMode.Input.Width, absoluteOutputMode.Input.Height), absoluteOutputMode.Input.Position);
+                    _ = Task.Run(GenerateArea);
+                    resetEvent.WaitOne();
                 }
-                if (timer.ElapsedMilliseconds >= generationInterval)
-                {
-                    timer.Reset();
-                    targetArea = new Area(fullArea, EnableAspectRatio, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
-                    sizeUpdateVector = (targetArea.size - area.size) / (float)(transitionDuration / areaTransitionUpdateInterval);
-                    positionUpdateVector = (targetArea.position - area.position) / (float)(transitionDuration / areaTransitionUpdateInterval);
-                    //Log.Debug("Area Randomizer", $"New area: {targetArea.toString()}");
-                    updateIntervalTimer.Start();
-                    transitionTimer.Start();
-                }
-                if (updateIntervalTimer.ElapsedMilliseconds >= areaTransitionUpdateInterval)
-                {
-                    updateIntervalTimer.Restart();
-                    area.Update(sizeUpdateVector, positionUpdateVector);
-                    if (transitionTimer.ElapsedMilliseconds >= transitionDuration)
-                    {
-                        updateIntervalTimer.Reset();
-                        transitionTimer.Reset();
-                        timer.Start();
-                        //Log.Debug("Area Randomizer", $"Transition complete: {area.toString()}");
-                    }
-                }
+                Vector2 generatedareaPos = (((point / lpmm) - area.toTopLeft()) / area.size);
+                return (userDefinedArea.toTopLeft() + (generatedareaPos * userDefinedArea.size)) * lpmm;
             }
             else
             {
                 return new Vector2(point.X,point.Y);
             }
-            Vector2 generatedareaPos = (((point / lpmm) - area.toTopLeft()) / area.size);
-            return (userDefinedArea.toTopLeft() + (generatedareaPos * userDefinedArea.size)) * lpmm;
+        }
+        public void GenerateArea()
+        {
+            while(true)
+            {
+                if (Info.Driver.OutputMode is AbsoluteOutputMode absoluteOutputMode)
+                {
+                    float aspectRatio = (float)Math.Round((absoluteOutputMode.Output.Width / absoluteOutputMode.Output.Height), 4);
+                    /*
+                        NOTE: 
+                            - Generate a new area when user enable the plugin
+                            - Generate a new area when timer >= generationInterval, also stop the timer & start the transition timer
+                    */ 
+                    if (!timer.IsRunning & !updateIntervalTimer.IsRunning)
+                    {
+                        timer.Start();
+                        area = new Area(fullArea, EnableAspectRatio, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
+                        //Log.Debug("Area Randomizer", $"New area: {area.toString()}");
+                        resetEvent.Set();
+                    }
+                    if (timer.ElapsedMilliseconds >= generationInterval)
+                    {
+                        timer.Reset();
+                        targetArea = new Area(fullArea, EnableAspectRatio, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
+                        sizeUpdateVector = (targetArea.size - area.size) / (float)(transitionDuration / areaTransitionUpdateInterval);
+                        positionUpdateVector = (targetArea.position - area.position) / (float)(transitionDuration / areaTransitionUpdateInterval);
+                        //Log.Debug("Area Randomizer", $"New area: {targetArea.toString()}");
+                        updateIntervalTimer.Start();
+                        transitionTimer.Start();
+                    }
+                    if (updateIntervalTimer.ElapsedMilliseconds >= areaTransitionUpdateInterval)
+                    {
+                        updateIntervalTimer.Restart();
+                        area.Update(sizeUpdateVector, positionUpdateVector);
+                        if (transitionTimer.ElapsedMilliseconds >= transitionDuration)
+                        {
+                            updateIntervalTimer.Reset();
+                            transitionTimer.Reset();
+                            timer.Start();
+                            //Log.Debug("Area Randomizer", $"Transition complete: {area.toString()}");
+                        }
+                    }
+                }
+            }
         }
         // Get Pen pos
         public FilterStage FilterStage => FilterStage.PreTranspose;
