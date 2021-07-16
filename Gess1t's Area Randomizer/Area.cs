@@ -5,7 +5,7 @@ namespace Area_Randomizer
 {
     public class Area
     {
-        Vector2 fullArea;
+        public Vector2 fullArea;
         public Vector2 size;
         public Vector2 position;
         Random rdm = new Random();
