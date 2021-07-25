@@ -5,7 +5,7 @@
 }
 
 .FullAreaContainer {
-    /* Add background image here */
+    background-image: url("../img/WYSI.gif");
     background-size: cover
 }
 

@@ -8,9 +8,11 @@ var definedArea;
 var targetArea;
 var penPosition;
 
+var area;
+
 document.addEventListener('DOMContentLoaded', async function () {   
     fullAreaContainer = document.getElementsByClassName("FullAreaContainer")[0];
-    definedAreaContainer = document.getElementsByClassName("definedAreaContainer")[0];
+    definedAreaContainer = document.getElementsByClassName("DefinedAreaContainer")[0];
     targetAreaContainer = document.getElementsByClassName("TargetAreaContainer")[0];
     penPositionContainer = document.getElementsByClassName("PenPositionContainer")[0];
 
@@ -29,46 +31,49 @@ document.addEventListener('DOMContentLoaded', async function () {
 
     socket.onopen = function (event) {
         console.log("Connected, send request now...");
-        socket.send('{"pipe": "AreaRandomizer"}');
+        socket.send('{"id": "AreaRandomizer"}');
         console.log("Initial Query sent");
     };
     socket.onmessage = function (message) {
         var json = JSON.parse(message.data);
-        if (json.GetFullArea != undefined) {
-            SetFullArea(json.GetFullArea);
+        if (json.Area != undefined) {
+            setArea(json.Area);
         }
-        if (json.GetAreaAsync != undefined) {
-            setArea(json.GetAreaAsync);
+        if (json.TargetArea != undefined) {
+            setTargetArea(json.TargetArea);
+            area = json["TargetArea"]["fullArea"];
+            lpmm = json["TargetArea"]["lpmm"];
+            SetFullArea(json["TargetArea"]["fullArea"]);
         }
-        if (json.GetTargetAreaAsync != undefined) {
-            setTargetArea(json.GetTargetAreaAsync);
+        if (json.Position != undefined) {
+
+            SetPos(json.Position);
         }
-        if (json.GetPosition != undefined) {
-            SetPos(json.GetPosition);
-        }
-        console.log(json)
     }
 })
 function SetPos(pos) {
     if (area != undefined) {
-        penCursorPositionCircle.setAttribute("cx", String(pos.X / area.lpmm)+"mm");
-        penCursorPositionCircle.setAttribute("cy", String(pos.Y / area.lpmm)+"mm");
+        penPosition.setAttribute("cx", String(pos.X)+"mm");
+        penPosition.setAttribute("cy", String(pos.Y)+"mm");
     }
 }
 
 function SetFullArea(area) {
     if (area != undefined) {
-        tabletAreaContainer.setAttribute("width", String(area.FullArea.size.X)+"mm");
-        tabletAreaContainer.setAttribute("height", String(area.FullArea.size.Y)+"mm");
+        fullAreaContainer.setAttribute("width", String(area.X)+"mm");
+        fullAreaContainer.setAttribute("height", String(area.Y)+"mm");
 
-        userDefinedAreaContainer.setAttribute("height", String(area.FullArea.size.Y)+"mm");
-        userDefinedAreaContainer.setAttribute("height", String(area.FullArea.size.Y)+"mm");
+        definedAreaContainer.setAttribute("height", String(area.Y)+"mm");
+        definedAreaContainer.setAttribute("height", String(area.Y)+"mm");
 
-        penPositionContainer.setAttribute("width", String(area.FullArea.size.X)+"mm");
-        penPositionContainer.setAttribute("height", String(area.FullArea.size.Y)+"mm");
+        targetAreaContainer.setAttribute("height", String(area.Y)+"mm");
+        targetAreaContainer.setAttribute("height", String(area.Y)+"mm");
 
-        fullArea.setAttribute("width", String(area.FullArea.size.X)+"mm");
-        fullArea.setAttribute("height", String(area.FullArea.size.Y)+"mm");
+        penPositionContainer.setAttribute("width", String(area.X)+"mm");
+        penPositionContainer.setAttribute("height", String(area.Y)+"mm");
+
+        fullArea.setAttribute("width", String(area.X)+"mm");
+        fullArea.setAttribute("height", String(area.Y)+"mm");
         fullArea.setAttribute("x", "0mm");
         fullArea.setAttribute("y", "0mm");
     }
@@ -76,15 +81,18 @@ function SetFullArea(area) {
 
 function setArea(area) {
     if (area != undefined) {
-        userDefinedArea.setAttribute("width", String(area.size.X)+"mm");
-        userDefinedArea.setAttribute("height", String(area.size.Y)+"mm");
-        userDefinedArea.setAttribute("x", String(area.position.X - (area.size.X / 2))+"mm");
-        userDefinedArea.setAttribute("y", String(area.position.Y - (area.size.Y / 2))+"mm");
+        definedArea.setAttribute("width", String(area.size.X)+"mm");
+        definedArea.setAttribute("height", String(area.size.Y)+"mm");
+        definedArea.setAttribute("x", String(area.position.X - (area.size.X / 2))+"mm");
+        definedArea.setAttribute("y", String(area.position.Y - (area.size.Y / 2))+"mm");
     }
 }
 
 function setTargetArea(area) {
     if (area != undefined) {
-
+        targetArea.setAttribute("width", String(area.size.X)+"mm");
+        targetArea.setAttribute("height", String(area.size.Y)+"mm");
+        targetArea.setAttribute("x", String(area.position.X - (area.size.X / 2))+"mm");
+        targetArea.setAttribute("y", String(area.position.Y - (area.size.Y / 2))+"mm");
     }
 }

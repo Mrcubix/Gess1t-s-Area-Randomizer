@@ -3,11 +3,11 @@ using OpenTabletDriver.Plugin.Tablet;
 using OpenTabletDriver.Plugin.Output;
 using OpenTabletDriver.Plugin;
 using System;
+using EventTimer = System.Timers.Timer;
 using System.Numerics;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Threading;
-using System.Text.Json;
 using System.IO;
 
 namespace Area_Randomizer
@@ -18,10 +18,13 @@ namespace Area_Randomizer
     [PluginName("Gess1t's Area Randomizer (Relative Mode Edition)")]
     public class Gess1ts_Area_Randomizer_Relative_Mode : IFilter
     {
-        private readonly ManualResetEvent FirstGenerationEvent = new ManualResetEvent(false);
-        private readonly ManualResetEvent PositionEvent = new ManualResetEvent(false);
-        private readonly ManualResetEvent TargetGenerationEvent = new ManualResetEvent(false);
-        private readonly ManualResetEvent AreaUpdateEvent = new ManualResetEvent(false);
+        private readonly ManualResetEvent firstAreaGeneration = new ManualResetEvent(false);
+        public event EventHandler<Vector2> positionChanged;
+        public event EventHandler<Area> AreaChanged;
+        public event EventHandler<Area> TargetAreaHasGenerated;
+        EventTimer ttimer = new EventTimer();
+        EventTimer ttransitionTimer = new EventTimer();
+        EventTimer uupdateIntervalTimer = new EventTimer();
         Stopwatch timer = new Stopwatch();
         Stopwatch transitionTimer = new Stopwatch();
         Stopwatch updateIntervalTimer = new Stopwatch();
@@ -32,10 +35,9 @@ namespace Area_Randomizer
         Area area;
         Vector2 positionUpdateVector;
         Vector2 sizeUpdateVector;
-        Server server;
+        Client client;
         Vector2 generatedareaPos;
-        bool isRunningAfterSave = true;
-        bool serverIsRunning;
+        private bool runAfterSave = true;
         public bool isFirstRequest = true;
         private bool firstUse = false;
         private string overlayDir;
@@ -56,16 +58,27 @@ namespace Area_Randomizer
                     Directory.CreateDirectory(pluginOverlayDir);
                     firstUse = true;
                 }
-                if (!serverIsRunning) 
+
+                client = new Client("API");
+                Log.Debug("Area Randomizer", "Starting Client");
+                _ = Task.Run(client.StartAsync);
+
+                positionChanged += (_, input) =>
                 {
-                    serverIsRunning = true;
-                    server = new Server("AreaRandomizer", this);
-                    Log.Debug("Area Randomizer", "Starting server");
-                    _ = Task.Run(server.StartAsync);
-                }
+                    _ = client.rpc.NotifyAsync("SendDataAsync", "AreaRandomizer", "Position", input / lpmm);
+                };
+                AreaChanged += (_, area) =>
+                {
+                    _ = client.rpc.NotifyAsync("SendDataAsync", "AreaRandomizer", "Area", area);
+                };
+                TargetAreaHasGenerated += (_, targetArea) =>
+                {
+                    _ = client.rpc.NotifyAsync("SendDataAsync", "AreaRandomizer", "TargetArea", targetArea);
+                };
+                userDefinedArea = new Area(fullArea, fullArea / 2);
             }
         }
-        public Vector2 Filter(Vector2 point) 
+        public Vector2 Filter(Vector2 input) 
         {
             if (Info.Driver.OutputMode is RelativeOutputMode relativeOutputMode)
             {   
@@ -74,104 +87,65 @@ namespace Area_Randomizer
                     firstUse = false;
                     new Thread(new ThreadStart(CopyFiles)).Start();
                 }
-                if (isRunningAfterSave)
+                if (runAfterSave)
                 {
-                    isRunningAfterSave = false;
-                    userDefinedArea = new Area(new Vector2(Info.Driver.Tablet.Digitizer.Width, Info.Driver.Tablet.Digitizer.Height), new Vector2(Info.Driver.Tablet.Digitizer.Width / 2, Info.Driver.Tablet.Digitizer.Height / 2));
-                    _ = Task.Run(GenerateArea);
-                    FirstGenerationEvent.WaitOne();
+                    runAfterSave = false;
+                    ttimer.Interval = _generationInterval;
+                    ttransitionTimer.Interval = _transitionDuration;
+                    uupdateIntervalTimer.Interval = _areaTransitionUpdateInterval;
+                    ttimer.Elapsed += (_, _) =>
+                    {
+                        if (Info.Driver.OutputMode is RelativeOutputMode relativeOutputMode)
+                        {   
+                            float? aspectRatio = null;
+                            targetArea = new Area(fullArea, false, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
+                            TargetAreaHasGenerated?.Invoke(this, targetArea);
+                            ttimer.Enabled = false;
+                            sizeUpdateVector = (targetArea.size - area.size) / (float)(_transitionDuration / _areaTransitionUpdateInterval);
+                            positionUpdateVector = (targetArea.position - area.position) / (float)(_transitionDuration / _areaTransitionUpdateInterval);
+                            ttransitionTimer.Enabled = true;
+                            uupdateIntervalTimer.Enabled = true;
+                        }
+                    };
+                    uupdateIntervalTimer.Elapsed += (_, _) =>
+                    {
+                        area.Update(sizeUpdateVector, positionUpdateVector);
+                        AreaChanged?.Invoke(this, area);
+                    };
+                    ttransitionTimer.Elapsed += (_, _) =>
+                    {
+                        uupdateIntervalTimer.Enabled = false;
+                        ttransitionTimer.Enabled = false;
+                        ttimer.Enabled = true;
+                    };
+                    ttimer.Start();
+                    GenerateFirstArea();
+                    firstAreaGeneration.WaitOne();
                 }
-                generatedareaPos = (((point / lpmm) - area.toTopLeft()) / area.size);
-                PositionEvent.Set();
-                PositionEvent.Reset();
+                generatedareaPos = (((input / lpmm) - area.toTopLeft()) / area.size);
+                positionChanged?.Invoke(this, input);
                 return (userDefinedArea.toTopLeft() + (generatedareaPos * userDefinedArea.size)) * lpmm;
             }
             else
             {
-                return new Vector2(point.X,point.Y);
+                return new Vector2(input.X, input.Y);
             }
         }
-        public void GenerateArea()
+        public void GenerateFirstArea()
         {
-            while(true)
+            if (Info.Driver.OutputMode is RelativeOutputMode relativeOutputMode)
             {
-                if (Info.Driver.OutputMode is RelativeOutputMode relativeOutputMode)
-                {
-                    float? aspectRatio = null;
-                    /*
-                         NOTE: 
-                            - Generate a new area when user enable the plugin
-                            - Generate a new area when timer >= generationInterval, also stop the timer & start the transition timer
-                     */
-                    if (!timer.IsRunning & !updateIntervalTimer.IsRunning)
-                    {
-                        timer.Start();
-                        area = new Area(fullArea, false, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
-                        //Log.Debug("Area Randomizer", $"New area: {area.toString()}");
-                        FirstGenerationEvent.Set();
-                        FirstGenerationEvent.Reset();
-                        AreaUpdateEvent.Set();
-                        AreaUpdateEvent.Reset();
-                    }
-                    if (timer.ElapsedMilliseconds >= generationInterval)
-                    {
-                        timer.Reset();
-                        targetArea = new Area(fullArea, false, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
-                        sizeUpdateVector = (targetArea.size - area.size) / (float)(transitionDuration / areaTransitionUpdateInterval);
-                        positionUpdateVector = (targetArea.position - area.position) / (float)(transitionDuration / areaTransitionUpdateInterval);
-                        //Log.Debug("Area Randomizer", $"New area: {targetArea.toString()}");
-                        TargetGenerationEvent.Set();
-                        TargetGenerationEvent.Reset();
-                    }
-                    if (updateIntervalTimer.ElapsedMilliseconds >= areaTransitionUpdateInterval)
-                    {
-                        updateIntervalTimer.Restart();
-                        area.Update(sizeUpdateVector, positionUpdateVector);
-                        AreaUpdateEvent.Set();
-                        AreaUpdateEvent.Reset();
-                        if (transitionTimer.ElapsedMilliseconds >= transitionDuration)
-                        {
-                            updateIntervalTimer.Reset();
-                            transitionTimer.Reset();
-                            timer.Start();
-                            //Log.Debug("Area Randomizer", $"Transition complete: {area.toString()}");
-                        }
-                    }
-                }
+                float? aspectRatio = null;
+                /*
+                    NOTE: 
+                        - Generate a new area when user enable the plugin
+                        - Generate a new area when timer >= generationInterval, also stop the timer & start the transition timer
+                */
+                timer.Start();
+                area = new Area(fullArea, false, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
+                AreaChanged?.Invoke(this, area);
+                firstAreaGeneration.Set();
             }
-        }
-        public Task<string> GetMethodsAsync()
-        {
-            string[] methods = new string[4] {"GetFullAreaAsync", "GetPositionAsync", "GetAreaAsync", "GetTargetAreaAsync"};
-            return Task.FromResult(JsonSerializer.Serialize(methods));
-        }
-        public async Task<Vector2> GetPositionAsync()
-        {
-            await Task.Run(() => PositionEvent.WaitOne());
-            Vector2 Position = area.toTopLeft() + generatedareaPos * area.size;
-            return Position;
-        }
-        public async Task<Area> GetAreaAsync()
-        {
-            await Task.Run(() => AreaUpdateEvent.WaitOne());
-            return area;
-        }
-        public async Task<Area> GetTargetAreaAsync()
-        {
-            await Task.Run(() => TargetGenerationEvent.WaitOne());
-            return targetArea;
-        }
-        public async Task<Area> GetFullAreaAsync()
-        {
-            if (isFirstRequest)
-            {
-                isFirstRequest = false;
-            }
-            else
-            {
-                await Task.Delay(10000);
-            }
-            return new Area(fullArea, fullArea / 2);
         }
         // http://msdn.microsoft.com/en-us/library/cc148994.aspx
         public void CopyFiles()
@@ -242,14 +216,30 @@ namespace Area_Randomizer
                  "Time after which, an new area will be generated.\n\n" +
                  "Higher value mean it will take longer before a new area is generated.")
         ]
-        public int generationInterval { set; get; }
+        public int generationInterval 
+        { 
+            set
+            {
+                _generationInterval = Math.Max(value, 15);
+            } 
+            get => _generationInterval;
+        }
+        private int _generationInterval;
         [Property("Transition duration"),
          Unit("ms"),
          DefaultPropertyValue(5000),
          ToolTip("Area Randomizer:\n\n" +
                  "Time taken to transition from an area to another.")
         ]
-        public int transitionDuration { set; get; }
+        public int transitionDuration 
+        { 
+            set
+            {
+                _transitionDuration = Math.Max(value, 15);
+            }
+            get => _transitionDuration;
+        }
+        private int _transitionDuration;
         [Property("Area Transition Update Interval"),
          Unit("ms"),
          DefaultPropertyValue(50),
@@ -259,7 +249,15 @@ namespace Area_Randomizer
                  "A value of 0 mean the area will be updated on the next report.\n" +
                  "(not recommended on higher report rate tablets)")
         ]
-        public int areaTransitionUpdateInterval { set; get; }
+        public int areaTransitionUpdateInterval 
+        { 
+            set
+            {
+                _areaTransitionUpdateInterval = Math.Max(value, 15);
+            }
+            get => _areaTransitionUpdateInterval; 
+        }
+        private int _areaTransitionUpdateInterval;
         [Property("Minimum Width"),
          Unit("%"),
          DefaultPropertyValue(0),
