@@ -3,10 +3,12 @@ using OpenTabletDriver.Plugin.Tablet;
 using OpenTabletDriver.Plugin.Output;
 using OpenTabletDriver.Plugin;
 using System;
+using EventTimer = System.Timers.Timer;
 using System.Numerics;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Threading;
+using System.IO;
 
 namespace Area_Randomizer
 {
@@ -16,7 +18,13 @@ namespace Area_Randomizer
     [PluginName("Gess1t's Area Randomizer (Absolute Mode Edition)")]
     public class Gess1ts_Area_Randomizer_Absolute_Mode : IFilter
     {
-        private readonly ManualResetEvent resetEvent = new ManualResetEvent(false);
+        private readonly ManualResetEvent firstAreaGeneration = new ManualResetEvent(false);
+        public event EventHandler<Vector2> positionChanged;
+        public event EventHandler<Area> AreaChanged;
+        public event EventHandler<Area> TargetAreaHasGenerated;
+        EventTimer ttimer = new EventTimer();
+        EventTimer ttransitionTimer = new EventTimer();
+        EventTimer uupdateIntervalTimer = new EventTimer();
         Stopwatch timer = new Stopwatch();
         Stopwatch transitionTimer = new Stopwatch();
         Stopwatch updateIntervalTimer = new Stopwatch();
@@ -27,69 +35,145 @@ namespace Area_Randomizer
         Area area;
         Vector2 positionUpdateVector;
         Vector2 sizeUpdateVector;
-        Server server;
-        bool isRunningAfterSave = true;
-        public Vector2 Filter(Vector2 point) 
+        Client client;
+        Vector2 generatedareaPos;
+        private float aspectRatio;
+        private bool runAfterSave = true;
+        public bool isFirstRequest = true;
+        private bool firstUse = false;
+        private string overlayDir;
+        private string pluginOverlayDir;
+        public Gess1ts_Area_Randomizer_Absolute_Mode()
         {
             if (Info.Driver.OutputMode is AbsoluteOutputMode absoluteOutputMode)
             {
-                if (isRunningAfterSave)
+                overlayDir = Path.Combine(Directory.GetCurrentDirectory(), "Overlays");
+                if (!Directory.Exists(overlayDir))
                 {
-                    isRunningAfterSave = false;
-                    userDefinedArea = new Area(new Vector2(absoluteOutputMode.Input.Width, absoluteOutputMode.Input.Height), absoluteOutputMode.Input.Position);
-                    _ = Task.Run(GenerateArea);
-                    resetEvent.WaitOne();
+                    Directory.CreateDirectory(overlayDir);
+                    firstUse = true;
                 }
-                Vector2 generatedareaPos = (((point / lpmm) - area.toTopLeft()) / area.size);
+                pluginOverlayDir = Path.Combine(overlayDir, "AreaRandomizer");
+                if (!Directory.Exists(pluginOverlayDir))
+                {
+                    Directory.CreateDirectory(pluginOverlayDir);
+                    firstUse = true;
+                }
+
+                client = new Client("API");
+                Log.Debug("Area Randomizer", "Starting Client");
+                _ = Task.Run(client.StartAsync);
+
+                positionChanged += (_, input) =>
+                {
+                    _ = client.rpc.NotifyAsync("SendDataAsync", "AreaRandomizer", "Position", input / lpmm);
+                };
+                AreaChanged += (_, area) =>
+                {
+                    _ = client.rpc.NotifyAsync("SendDataAsync", "AreaRandomizer", "Area", area);
+                };
+                TargetAreaHasGenerated += (_, targetArea) =>
+                {
+                    _ = client.rpc.NotifyAsync("SendDataAsync", "AreaRandomizer", "TargetArea", targetArea);
+                };
+                userDefinedArea = new Area(new Vector2(absoluteOutputMode.Input.Width, absoluteOutputMode.Input.Height), absoluteOutputMode.Input.Position);
+                aspectRatio = (float)Math.Round((absoluteOutputMode.Output.Width / absoluteOutputMode.Output.Height), 4);
+            }
+        }
+        public Vector2 Filter(Vector2 input) 
+        {
+            if (Info.Driver.OutputMode is AbsoluteOutputMode absoluteOutputMode)
+            {
+                if (firstUse)
+                {
+                    firstUse = false;
+                    new Thread(new ThreadStart(CopyFiles)).Start();
+                }
+                if (runAfterSave)
+                {
+                    runAfterSave = false;
+                    ttimer.Interval = _generationInterval;
+                    ttransitionTimer.Interval = _transitionDuration;
+                    uupdateIntervalTimer.Interval = _areaTransitionUpdateInterval;
+                    ttimer.Elapsed += (_, _) =>
+                    {
+                        if (Info.Driver.OutputMode is AbsoluteOutputMode absoluteOutputMode)
+                        {   
+                            targetArea = new Area(fullArea, false, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
+                            TargetAreaHasGenerated?.Invoke(this, targetArea);
+                            ttimer.Enabled = false;
+                            sizeUpdateVector = (targetArea.size - area.size) / (float)(_transitionDuration / _areaTransitionUpdateInterval);
+                            positionUpdateVector = (targetArea.position - area.position) / (float)(_transitionDuration / _areaTransitionUpdateInterval);
+                            ttransitionTimer.Enabled = true;
+                            uupdateIntervalTimer.Enabled = true;
+                        }
+                    };
+                    uupdateIntervalTimer.Elapsed += (_, _) =>
+                    {
+                        area.Update(sizeUpdateVector, positionUpdateVector);
+                        AreaChanged?.Invoke(this, area);
+                    };
+                    ttransitionTimer.Elapsed += (_, _) =>
+                    {
+                        uupdateIntervalTimer.Enabled = false;
+                        ttransitionTimer.Enabled = false;
+                        ttimer.Enabled = true;
+                    };
+                    ttimer.Start();
+                    GenerateFirstArea();
+                    firstAreaGeneration.WaitOne();
+                }
+                generatedareaPos = (((input / lpmm) - area.toTopLeft()) / area.size);
+                positionChanged?.Invoke(this, input);
                 return (userDefinedArea.toTopLeft() + (generatedareaPos * userDefinedArea.size)) * lpmm;
             }
             else
             {
-                return new Vector2(point.X,point.Y);
+                return new Vector2(input.X,input.Y);
             }
         }
-        public void GenerateArea()
+        public void GenerateFirstArea()
         {
-            while(true)
+            if (Info.Driver.OutputMode is AbsoluteOutputMode absoluteOutputMode)
             {
-                if (Info.Driver.OutputMode is AbsoluteOutputMode absoluteOutputMode)
+                timer.Start();
+                area = new Area(fullArea, EnableAspectRatio, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
+                AreaChanged?.Invoke(this, area);
+                TargetAreaHasGenerated?.Invoke(this, area);
+                firstAreaGeneration.Set();
+            }
+        }
+        // http://msdn.microsoft.com/en-us/library/cc148994.aspx
+        public void CopyFiles()
+        {
+            if (_pluginsPath != null)
+            {
+                DirectoryInfo source = new DirectoryInfo(Path.Combine(_pluginsPath, "AreaRandomizer"));
+                if (source.Exists)
                 {
-                    float aspectRatio = (float)Math.Round((absoluteOutputMode.Output.Width / absoluteOutputMode.Output.Height), 4);
-                    /*
-                        NOTE: 
-                            - Generate a new area when user enable the plugin
-                            - Generate a new area when timer >= generationInterval, also stop the timer & start the transition timer
-                    */ 
-                    if (!timer.IsRunning & !updateIntervalTimer.IsRunning)
+                    foreach (FileInfo file in source.GetFiles())
                     {
-                        timer.Start();
-                        area = new Area(fullArea, EnableAspectRatio, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
-                        //Log.Debug("Area Randomizer", $"New area: {area.toString()}");
-                        resetEvent.Set();
+                        file.CopyTo(Path.Combine(pluginOverlayDir, file.Name), true);
                     }
-                    if (timer.ElapsedMilliseconds >= generationInterval)
+                    foreach(DirectoryInfo directory in source.GetDirectories())
                     {
-                        timer.Reset();
-                        targetArea = new Area(fullArea, EnableAspectRatio, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
-                        sizeUpdateVector = (targetArea.size - area.size) / (float)(transitionDuration / areaTransitionUpdateInterval);
-                        positionUpdateVector = (targetArea.position - area.position) / (float)(transitionDuration / areaTransitionUpdateInterval);
-                        //Log.Debug("Area Randomizer", $"New area: {targetArea.toString()}");
-                        updateIntervalTimer.Start();
-                        transitionTimer.Start();
-                    }
-                    if (updateIntervalTimer.ElapsedMilliseconds >= areaTransitionUpdateInterval)
-                    {
-                        updateIntervalTimer.Restart();
-                        area.Update(sizeUpdateVector, positionUpdateVector);
-                        if (transitionTimer.ElapsedMilliseconds >= transitionDuration)
+                        string targetFolder = Path.Combine(pluginOverlayDir, directory.Name);
+                        Directory.CreateDirectory(targetFolder);
+                        DirectoryInfo directoryTarget = new DirectoryInfo(targetFolder);
+                        foreach (FileInfo file in directory.GetFiles())
                         {
-                            updateIntervalTimer.Reset();
-                            transitionTimer.Reset();
-                            timer.Start();
-                            //Log.Debug("Area Randomizer", $"Transition complete: {area.toString()}");
+                            file.CopyTo(Path.Combine(targetFolder, file.Name), true);
                         }
                     }
                 }
+                else
+                {
+                    Log.Write("Area Randomizer", "Overlay Unavailable: Plugin folder path is missing, make sure to set it up properly and save to try again.", LogLevel.Info);
+                }
+            }
+            else
+            {
+                Log.Write("Area Randomizer", "Overlay Unavailable: Plugin folder path is missing, make sure to set it up properly and save to try again.", LogLevel.Info);
             }
         }
         // Get Pen pos
@@ -100,6 +184,20 @@ namespace Area_Randomizer
             DefaultPropertyValue() : Define a default value for the property.
             ToolTip() : Define a description, usually used on a prperty to describe it's function.
         */
+        [Property("Plugin folder path"),
+         ToolTip("Proxy API:\n\n" +
+                 "Folder where this plugin is located in.\n\n" +
+                 "E.g: 'C:\\Users\\{user}\\AppData\\Local\\OpenTabletDriver\\Plugins\\Area Visualizer' on windows.")
+        ]
+        public string pluginsPath 
+        {
+            get => @_pluginsPath; 
+            set
+            {
+                _pluginsPath = @value;
+            }
+        }
+        public string _pluginsPath;
         [BooleanProperty("Keep Aspect ratio", ""),
          DefaultPropertyValue(true),
          ToolTip("Area Randomizer:\n\n" +
@@ -121,14 +219,30 @@ namespace Area_Randomizer
                  "Time after which, an new area will be generated.\n\n" +
                  "Higher value mean it will take longer before a new area is generated.")
         ]
-        public int generationInterval { set; get; }
+        public int generationInterval 
+        { 
+            set
+            {
+                _generationInterval = Math.Max(value, 15);
+            } 
+            get => _generationInterval;
+        }
+        private int _generationInterval;
         [Property("Transition duration"),
          Unit("ms"),
          DefaultPropertyValue(5000),
          ToolTip("Area Randomizer:\n\n" +
                  "Time taken to transition from an area to another.")
         ]
-        public int transitionDuration { set; get; }
+        public int transitionDuration 
+        { 
+            set
+            {
+                _transitionDuration = Math.Max(value, 15);
+            }
+            get => _transitionDuration;
+        }
+        private int _transitionDuration;
         [Property("Area Transition Update Interval"),
          Unit("ms"),
          DefaultPropertyValue(50),
@@ -138,7 +252,15 @@ namespace Area_Randomizer
                  "A value of 0 mean the area will be updated on the next report.\n" +
                  "(not recommended on higher report rate tablets)")
         ]
-        public int areaTransitionUpdateInterval { set; get; }
+        public int areaTransitionUpdateInterval 
+        { 
+            set
+            {
+                _areaTransitionUpdateInterval = Math.Max(value, 15);
+            }
+            get => _areaTransitionUpdateInterval; 
+        }
+        private int _areaTransitionUpdateInterval;
         [Property("Minimum Width"),
          Unit("%"),
          DefaultPropertyValue(0),
