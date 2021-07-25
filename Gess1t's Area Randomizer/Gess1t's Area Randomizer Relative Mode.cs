@@ -22,12 +22,9 @@ namespace Area_Randomizer
         public event EventHandler<Vector2> positionChanged;
         public event EventHandler<Area> AreaChanged;
         public event EventHandler<Area> TargetAreaHasGenerated;
-        EventTimer ttimer = new EventTimer();
-        EventTimer ttransitionTimer = new EventTimer();
-        EventTimer uupdateIntervalTimer = new EventTimer();
-        Stopwatch timer = new Stopwatch();
-        Stopwatch transitionTimer = new Stopwatch();
-        Stopwatch updateIntervalTimer = new Stopwatch();
+        EventTimer timer = new EventTimer();
+        EventTimer transitionTimer = new EventTimer();
+        EventTimer updateIntervalTimer = new EventTimer();
         float lpmm = Info.Driver.OutputMode.Tablet.Digitizer.MaxX / Info.Driver.OutputMode.Tablet.Digitizer.Width;
         Vector2 fullArea = new Vector2(Info.Driver.OutputMode.Tablet.Digitizer.Width, Info.Driver.OutputMode.Tablet.Digitizer.Height);
         Area userDefinedArea;
@@ -90,35 +87,36 @@ namespace Area_Randomizer
                 if (runAfterSave)
                 {
                     runAfterSave = false;
-                    ttimer.Interval = _generationInterval;
-                    ttransitionTimer.Interval = _transitionDuration;
-                    uupdateIntervalTimer.Interval = _areaTransitionUpdateInterval;
-                    ttimer.Elapsed += (_, _) =>
+                    timer.Interval = _generationInterval;
+                    transitionTimer.Interval = _transitionDuration;
+                    updateIntervalTimer.Interval = _areaTransitionUpdateInterval;
+                    timer.Elapsed += (_, _) =>
                     {
                         if (Info.Driver.OutputMode is RelativeOutputMode relativeOutputMode)
                         {   
                             float? aspectRatio = null;
                             targetArea = new Area(fullArea, false, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
                             TargetAreaHasGenerated?.Invoke(this, targetArea);
-                            ttimer.Enabled = false;
+                            timer.Enabled = false;
                             sizeUpdateVector = (targetArea.size - area.size) / (float)(_transitionDuration / _areaTransitionUpdateInterval);
                             positionUpdateVector = (targetArea.position - area.position) / (float)(_transitionDuration / _areaTransitionUpdateInterval);
-                            ttransitionTimer.Enabled = true;
-                            uupdateIntervalTimer.Enabled = true;
+                            transitionTimer.Enabled = true;
+                            updateIntervalTimer.Enabled = true;
                         }
                     };
-                    uupdateIntervalTimer.Elapsed += (_, _) =>
+                    updateIntervalTimer.Elapsed += (_, _) =>
                     {
                         area.Update(sizeUpdateVector, positionUpdateVector);
                         AreaChanged?.Invoke(this, area);
                     };
-                    ttransitionTimer.Elapsed += (_, _) =>
+                    transitionTimer.Elapsed += (_, _) =>
                     {
-                        uupdateIntervalTimer.Enabled = false;
-                        ttransitionTimer.Enabled = false;
-                        ttimer.Enabled = true;
+                        updateIntervalTimer.Enabled = false;
+                        transitionTimer.Enabled = false;
+                        timer.Enabled = true;
                     };
-                    ttimer.Start();
+                    timer.Start(); 
+                    // Generate a new area when user enable the plugin
                     GenerateFirstArea();
                     firstAreaGeneration.WaitOne();
                 }
@@ -136,12 +134,6 @@ namespace Area_Randomizer
             if (Info.Driver.OutputMode is RelativeOutputMode relativeOutputMode)
             {
                 float? aspectRatio = null;
-                /*
-                    NOTE: 
-                        - Generate a new area when user enable the plugin
-                        - Generate a new area when timer >= generationInterval, also stop the timer & start the transition timer
-                */
-                timer.Start();
                 area = new Area(fullArea, false, enableIndependantRandomization, area_MinX, area_MaxX, area_MinY, area_MaxY, aspectRatio);
                 AreaChanged?.Invoke(this, area);
                 firstAreaGeneration.Set();
