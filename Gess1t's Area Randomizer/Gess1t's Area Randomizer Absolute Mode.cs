@@ -64,7 +64,6 @@ namespace Area_Randomizer
                 Log.Debug("Area Randomizer", "Starting Client");
                 _ = Task.Run(client.StartAsync);
 
-                
                 positionChanged += (_, input) =>
                 {
                     _ = client.rpc.NotifyAsync("SendDataAsync", "AreaRandomizer", "Position", input / lpmm);
