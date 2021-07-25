@@ -55,6 +55,10 @@ namespace Area_Randomizer
                     Directory.CreateDirectory(pluginOverlayDir);
                     firstUse = true;
                 }
+                if (!File.Exists(Path.Combine(pluginOverlayDir, "index.html")))
+                {
+                    firstUse = true;
+                }
 
                 client = new Client("API");
                 Log.Debug("Area Randomizer", "Starting Client");
@@ -82,7 +86,7 @@ namespace Area_Randomizer
                 if (firstUse)
                 {
                     firstUse = false;
-                    new Thread(new ThreadStart(CopyFiles)).Start();
+                    _ = Task.Run(CopyFiles);
                 }
                 if (runAfterSave)
                 {
@@ -172,6 +176,11 @@ namespace Area_Randomizer
                 Log.Write("Area Randomizer", "Overlay Unavailable: Plugin folder path is missing, make sure to set it up properly and save to try again.", LogLevel.Info);
             }
         }
+        public void Dispose()
+        {
+            client.Dispose();
+            client = null;
+        }
         // Get Pen pos
         public FilterStage FilterStage => FilterStage.PostTranspose;
         /*
@@ -183,7 +192,7 @@ namespace Area_Randomizer
         [Property("Plugin folder path"),
          ToolTip("Proxy API:\n\n" +
                  "Folder where this plugin is located in.\n\n" +
-                 "E.g: 'C:\\Users\\{user}\\AppData\\Local\\OpenTabletDriver\\Plugins\\Area Visualizer' on windows.")
+                 "E.g: 'C:\\Users\\{user}\\AppData\\Local\\OpenTabletDriver\\Plugins\\Area Randomizer' on windows.")
         ]
         public string pluginsPath 
         {
