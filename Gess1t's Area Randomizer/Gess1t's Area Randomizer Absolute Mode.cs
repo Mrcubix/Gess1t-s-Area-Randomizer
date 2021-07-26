@@ -15,7 +15,7 @@ namespace Area_Randomizer
         PluginName() : Define a plugin name.
     */
     [PluginName("Gess1t's Area Randomizer (Absolute Mode Edition)")]
-    public class Gess1ts_Area_Randomizer_Absolute_Mode : IFilter
+    public class Gess1ts_Area_Randomizer_Absolute_Mode : IFilter, IDisposable
     {
         private readonly ManualResetEvent firstAreaGeneration = new ManualResetEvent(false);
         public event EventHandler<Vector2> positionChanged;
@@ -181,6 +181,9 @@ namespace Area_Randomizer
         {
             client.Dispose();
             client = null;
+            timer.Enabled = false;
+            transitionTimer.Enabled = false;
+            updateIntervalTimer.Enabled = false;
         }
         // Get Pen pos
         public FilterStage FilterStage => FilterStage.PreTranspose;
