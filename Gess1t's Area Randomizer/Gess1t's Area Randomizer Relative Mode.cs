@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Threading;
 using System.IO;
+using System.Runtime.InteropServices;
 
 namespace Area_Randomizer
 {
@@ -43,7 +44,18 @@ namespace Area_Randomizer
         {
             if (Info.Driver.OutputMode is RelativeOutputMode relativeOutputMode)
             { 
-                overlayDir = Path.Combine(Directory.GetCurrentDirectory(), "Overlays");
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    overlayDir = Path.Combine(Directory.GetCurrentDirectory(), "Overlays");
+                }
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                {
+                    overlayDir = Path.Combine(Environment.GetEnvironmentVariable("HOME"), ".config/OpenTabletDriver/Overlays");
+                }
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    overlayDir = Path.Combine(Environment.GetEnvironmentVariable("HOME"), "/Library/Application Support/OpenTabletDriver/Overlays");
+                }
                 if (!Directory.Exists(overlayDir))
                 {
                     Directory.CreateDirectory(overlayDir);
