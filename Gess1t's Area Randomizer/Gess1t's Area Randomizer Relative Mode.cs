@@ -95,7 +95,7 @@ namespace Area_Randomizer
         {
             if (Info.Driver.OutputMode is RelativeOutputMode relativeOutputMode)
             {   
-                if (firstUse)
+                if (firstUse && EnableExternalInterface)
                 {
                     firstUse = false;
                     _ = Task.Run(CopyFiles);
@@ -198,33 +198,7 @@ namespace Area_Randomizer
         }
         // Get Pen pos
         public FilterStage FilterStage => FilterStage.PostTranspose;
-        /*
-            Property() : Define input box property text. OR BooleanProperty() : Define checkbox property text.
-            Unit() : Define a Unit.
-            DefaultPropertyValue() : Define a default value for the property.
-            ToolTip() : Define a description, usually used on a prperty to describe it's function.
-        */
-        [Property("Plugin folder path"),
-         ToolTip("Proxy API:\n\n" +
-                 "Folder where this plugin is located in.\n\n" +
-                 "E.g: 'C:\\Users\\{user}\\AppData\\Local\\OpenTabletDriver\\Plugins\\Area Randomizer' on windows.")
-        ]
-        public string pluginsPath 
-        {
-            get => @_pluginsPath; 
-            set
-            {
-                _pluginsPath = @value;
-            }
-        }
-        public string _pluginsPath;
-        [BooleanProperty("Enable Independant Size Randomization", ""),
-         DefaultPropertyValue(false),
-         ToolTip("Area Randomizer:\n\n" +
-                 "Width and Height will be generated using their own multiplier.\n\n" +
-                 "This will override \"Keep Aspect Ration\" when enabled.")
-        ]
-        public bool enableIndependantRandomization { set; get; }
+
         [Property("Area Generation Interval"),
          Unit("ms"),
          DefaultPropertyValue(10000),
@@ -241,6 +215,7 @@ namespace Area_Randomizer
             get => _generationInterval;
         }
         private int _generationInterval;
+
         [Property("Transition duration"),
          Unit("ms"),
          DefaultPropertyValue(5000),
@@ -256,6 +231,7 @@ namespace Area_Randomizer
             get => _transitionDuration;
         }
         private int _transitionDuration;
+
         [Property("Area Transition Update Interval"),
          Unit("ms"),
          DefaultPropertyValue(50),
@@ -274,6 +250,15 @@ namespace Area_Randomizer
             get => _areaTransitionUpdateInterval; 
         }
         private int _areaTransitionUpdateInterval;
+
+        [BooleanProperty("Enable Independant Size Randomization", ""),
+         DefaultPropertyValue(false),
+         ToolTip("Area Randomizer:\n\n" +
+                 "Width and Height will be generated using their own multiplier.\n\n" +
+                 "This will override \"Keep Aspect Ration\" when enabled.")
+        ]
+        public bool enableIndependantRandomization { set; get; }
+
         [Property("Minimum Width"),
          Unit("%"),
          DefaultPropertyValue(0),
@@ -281,6 +266,7 @@ namespace Area_Randomizer
                  "Minimum width the generated area will have, in pourcentages.")
         ]
         public int area_MinX { set; get; }
+
         [Property("Minimum Heigth"),
         Unit("%"),
          DefaultPropertyValue(0),
@@ -288,6 +274,7 @@ namespace Area_Randomizer
                  "Minimum height the generated area will have, in pourcentages.")
         ]
         public int area_MinY { set; get; }
+
         [Property("Maximum Width"),
          Unit("%"),
          DefaultPropertyValue(100),
@@ -295,6 +282,7 @@ namespace Area_Randomizer
                  "Maximum width the generated area will have, in pourcentages.")
         ]
         public int area_MaxX { set; get; }
+
         [Property("Maximum Height"),
          Unit("%"),
          DefaultPropertyValue(100),
@@ -302,5 +290,28 @@ namespace Area_Randomizer
                  "Maximum height the generated area will have, in pourcentages.")
         ]
         public int area_MaxY { set; get; }
+
+        [BooleanProperty("Enable External Interface", ""),
+         DefaultPropertyValue(false),
+         ToolTip("Area Randomizer:\n\n" +
+                 "When enabled, An interface containing the current area will be avaiable on a specific port.\n\n" +
+                 "Require \"Gess1t's ProxyAPI\" to be installed.")
+        ]
+        public bool EnableExternalInterface { set; get; }
+
+        [Property("Plugin folder path (Optional)"),
+         ToolTip("Proxy API:\n\n" +
+                 "Folder where this plugin is located in.\n\n" +
+                 "E.g: 'C:\\Users\\{user}\\AppData\\Local\\OpenTabletDriver\\Plugins\\Area Randomizer' on windows.")
+        ]
+        public string pluginsPath 
+        {
+            get => @_pluginsPath; 
+            set
+            {
+                _pluginsPath = @value;
+            }
+        }
+        public string _pluginsPath;
     }
 }
